@@ -6,6 +6,7 @@
 **RAFOLIE 开发版安装地址：** https://github.com/RAFOLIE/ComfyUI-H3-ClipStream
 
 **当前开发版：ComfyUI V3 API + Nodes 2.0。** 迁移范围、运行要求与验证结果见 [V3_MIGRATION.md](V3_MIGRATION.md)。
+单采、双采素材选择节点的卡片均支持垃圾桶删除；删除范围、磁盘存储和缓存行为见 [删除与缓存说明](CACHE_AND_DELETION.md)。
 **[English](#english)** | **[简体中文](#简体中文)**
 
 ---

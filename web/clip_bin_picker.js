@@ -1,4 +1,5 @@
 // Modified by RAFOLIE 2026-09-28: Nodes 2.0 DOM layout and lifecycle.
+import { addDeleteButton } from "./delete_button.js";
 import { addPanel } from "./dom_panel.js";
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
@@ -181,7 +182,7 @@ function setupClipBinPickerWidget(node) {
     // Function to open full-featured audio/video modal preview
     function openVideoModal(clip, projectName) {
         const existing = document.getElementById("minimax-video-modal-overlay");
-        if (existing) existing.remove();
+        if (existing) existing._h3Close?.();
 
         const overlay = document.createElement("div");
         overlay.id = "minimax-video-modal-overlay";
@@ -289,11 +290,14 @@ function setupClipBinPickerWidget(node) {
 
         function closeModal() {
             video.pause();
-            video.src = "";
-            overlay.classList.add("closing");
-            setTimeout(() => overlay.remove(), 180);
+            video.removeAttribute("src");
+            video.load();
+            overlay.remove();
             window.removeEventListener("keydown", onKeyDown);
+            signal.removeEventListener("abort", closeModal);
         }
+        overlay._h3Close = closeModal;
+        signal.addEventListener("abort", closeModal, { once: true });
 
         function onKeyDown(e) {
             if (e.key === "Escape") {
@@ -309,18 +313,30 @@ function setupClipBinPickerWidget(node) {
     }
 
     // Function to load and render clips
+    const previewCleanups = new Set();
+    function releasePreviews() {
+        for (const cleanup of previewCleanups) cleanup();
+        previewCleanups.clear();
+    }
+    signal.addEventListener("abort", releasePreviews, { once: true });
     let requestId = 0;
-    async function loadClips() {
+    async function loadClips(deletedId = null) {
         if (signal.aborted) return;
         const currentRequest = ++requestId;
         const currentProject = projectWidget?.value || "Default_Project";
+        if (deletedId != null && selectionWidget?.value === deletedId) {
+            selectionWidget.value = "latest";
+            node.setDirtyCanvas?.(true, true);
+        }
         const currentSelection = (selectionWidget?.value || "latest").trim();
         updateSelectionDisplay(currentSelection);
         titleWrap.innerHTML = `🎞️ MiniMax Project Clip Bin: <span class="minimax-clip-bin-project-tag">${currentProject}</span>`;
 
         try {
-            const res = await api.fetchApi(`/minimax/clip_bin/list?project=${encodeURIComponent(currentProject)}`);
+            const res = await api.fetchApi(`/minimax/clip_bin/list?project=${encodeURIComponent(currentProject)}`, { cache: "no-store" });
+            if (signal.aborted || currentRequest !== requestId) return;
             if (!res.ok) {
+                releasePreviews();
                 deck.innerHTML = `<div style="padding: 10px; color: #94a3b8; font-size: 11px;">未连接到后台服务或素材库为空</div>`;
                 return;
             }
@@ -328,6 +344,7 @@ function setupClipBinPickerWidget(node) {
             if (signal.aborted || currentRequest !== requestId) return;
             const clips = data.clips || [];
 
+            releasePreviews();
             deck.innerHTML = "";
 
             // 1. Always append "Auto / Initial" Special Card
@@ -411,9 +428,24 @@ function setupClipBinPickerWidget(node) {
                         // Hover-to-Play dynamic preview (muted, lightweight loop)
                         let hoverVideo = null;
                         let hoverTimer = null;
+                        const stopHover = () => {
+                            clearTimeout(hoverTimer);
+                            hoverTimer = null;
+                            if (hoverVideo) {
+                                hoverVideo.pause();
+                                hoverVideo.removeAttribute("src");
+                                hoverVideo.load();
+                                hoverVideo.remove();
+                                hoverVideo = null;
+                            }
+                        };
+                        previewCleanups.add(stopHover);
 
                         card.addEventListener("mouseenter", () => {
+                            if (signal.aborted) return;
+                            stopHover();
                             hoverTimer = setTimeout(() => {
+                                if (signal.aborted || !card.isConnected) return;
                                 if (!hoverVideo) {
                                     hoverVideo = document.createElement("video");
                                     hoverVideo.className = "minimax-clip-hover-video";
@@ -429,23 +461,7 @@ function setupClipBinPickerWidget(node) {
                             }, 180);
                         });
 
-                        card.addEventListener("mouseleave", () => {
-                            if (hoverTimer) {
-                                clearTimeout(hoverTimer);
-                                hoverTimer = null;
-                            }
-                            if (hoverVideo) {
-                                hoverVideo.pause();
-                                hoverVideo.style.opacity = "0";
-                                const vRef = hoverVideo;
-                                hoverVideo = null;
-                                setTimeout(() => {
-                                    if (vRef && vRef.parentNode) {
-                                        vRef.remove();
-                                    }
-                                }, 200);
-                            }
-                        });
+                        card.addEventListener("mouseleave", stopHover);
 
                         // Double click to open full video modal
                         card.ondblclick = (e) => {
@@ -511,6 +527,25 @@ function setupClipBinPickerWidget(node) {
                         body.appendChild(lineage);
                     }
 
+                    addDeleteButton(body, {
+                        description: `项目「${currentProject}」的 ${clip.shot_tag || clip.clip_id}${clip.variants ? "（含一采、二采）" : ""}`,
+                        signal,
+                        onDelete: async () => {
+                            releasePreviews();
+                            document.getElementById("minimax-video-modal-overlay")?._h3Close?.();
+                            const response = await api.fetchApi("/minimax/clip_bin/delete", {
+                                method: "POST", headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ project: currentProject, clip_id: clip.clip_id }),
+                            });
+                            if (!response.ok) {
+                                const error = await response.json().catch(() => ({}));
+                                throw new Error(error.error || `删除失败 (${response.status})；请确认已重启 ComfyUI。`);
+                            }
+                            if (!signal.aborted && (projectWidget?.value || "Default_Project") === currentProject) {
+                                await loadClips(clip.clip_id);
+                            }
+                        },
+                    });
                     card.appendChild(body);
 
                     // Click to select
@@ -564,6 +599,13 @@ function setupClipBinPickerWidget(node) {
         };
     }
 
+    const onDeleted = event => {
+        if (event.detail?.project === (projectWidget?.value || "Default_Project")) {
+            loadClips(event.detail.deleted_id);
+        }
+    };
+    api.addEventListener("minimax/clip_bin/changed", onDeleted);
+    signal.addEventListener("abort", () => api.removeEventListener("minimax/clip_bin/changed", onDeleted), { once: true });
     node._h3ClipRefresh = loadClips;
     const onExecuted = () => loadClips();
     api.addEventListener("execution_success", onExecuted);

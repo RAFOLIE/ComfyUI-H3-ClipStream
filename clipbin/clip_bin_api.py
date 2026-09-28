@@ -1,6 +1,8 @@
 """HTTP API endpoints for MiniMax H3 Clip Bin web frontend integration."""
 
 import os
+import asyncio
+from .asset_paths import preview_url
 import json
 import logging
 from typing import Dict, Any, List
@@ -14,6 +16,9 @@ except ImportError:
 
 from .clip_bin_manager import (
     get_project_dir,
+    project_locked,
+    delete_clip_asset,
+    atomic_write_json,
     list_projects,
     load_project_index,
     save_project_index,
@@ -80,11 +85,11 @@ def _persist_clip_entry(project_name: str, clip_id: str, entry: Dict[str, Any]) 
             with open(meta_path, "r", encoding="utf-8") as f:
                 meta = json.load(f)
             meta.update(clean)
-            with open(meta_path, "w", encoding="utf-8") as f:
-                json.dump(meta, f, indent=2, ensure_ascii=False)
+            atomic_write_json(meta_path, meta)
         except Exception as e:
             logger.warning("[Clip Bin API] Failed to persist probed duration for '%s': %s", clip_id, e)
 
+@project_locked
 def get_project_clips_api(project_name: str) -> Dict[str, Any]:
     """Retrieves full clip metadata and relative thumbnail paths for the frontend."""
     p_name = (project_name or "Default_Project").strip()
@@ -149,7 +154,7 @@ def get_project_clips_api(project_name: str) -> Dict[str, Any]:
                             pass
 
         has_video = bool(video_file and os.path.isfile(os.path.join(clip_dir, video_file)))
-        video_url = f"/view?filename={video_file}&subfolder={subfolder}&type=output" if has_video else ""
+        video_url = preview_url(os.path.join(clip_dir, video_file), subfolder) if has_video else ""
 
         # Self-heal: measure real durations for clips saved before probing existed (one-time per clip)
         if _probe_and_fix_durations(p_name, clip_id, c, clip_dir):
@@ -158,7 +163,7 @@ def get_project_clips_api(project_name: str) -> Dict[str, Any]:
         enriched = dict(c)
         enriched["thumbnail_file"] = preview_file
         enriched["subfolder"] = subfolder
-        enriched["thumbnail_url"] = f"/view?filename={preview_file}&subfolder={subfolder}&type=output" if preview_file else ""
+        enriched["thumbnail_url"] = preview_url(os.path.join(clip_dir, preview_file), subfolder) if preview_file else ""
         enriched["has_video"] = has_video
         enriched["video_file"] = video_file if has_video else ""
         enriched["video_url"] = video_url
@@ -191,7 +196,33 @@ def register_clip_bin_routes() -> None:
     @routes.get("/minimax/clip_bin/list")
     async def handle_list_clips(request):
         project = request.rel_url.query.get("project", "Default_Project")
-        data = get_project_clips_api(project)
-        return web.json_response(data)
+        data = await asyncio.to_thread(get_project_clips_api, project)
+        return web.json_response(data, headers={"Cache-Control": "no-store"})
+
+
+    @routes.post("/minimax/clip_bin/delete")
+    async def handle_delete(request):
+        from urllib.parse import urlsplit
+        origin = request.headers.get("Origin") or request.headers.get("Referer", "")
+        if (request.headers.get("Sec-Fetch-Site") == "cross-site" or
+                not origin or urlsplit(origin).netloc.lower() != request.host.lower()):
+            return web.json_response({"error": "Only same-origin requests are allowed"}, status=403)
+        if request.content_type != "application/json":
+            return web.json_response({"error": "Expected JSON"}, status=415)
+        try:
+            body = await request.json()
+            if not isinstance(body, dict) or not isinstance(body.get("project"), str) or not body["project"].strip():
+                raise ValueError("A project name is required")
+            project, asset_id = body["project"], body["clip_id"]
+            removed = await asyncio.to_thread(delete_clip_asset, project, asset_id)
+        except (ValueError, TypeError, KeyError):
+            return web.json_response({"error": "Invalid project or clip_id"}, status=400)
+        except OSError:
+            logger.exception("Failed to delete saved asset")
+            return web.json_response({"error": "删除失败：文件可能被占用或没有写入权限，请关闭预览后重试。"}, status=409)
+        if not removed:
+            return web.json_response({"error": "片段已不存在，请刷新列表。"}, status=404)
+        prompt_server.send_sync("minimax/clip_bin/changed", {"project": project, "deleted_id": asset_id})
+        return web.json_response({"deleted": asset_id})
 
     logger.info("[Clip Bin API] Successfully registered /minimax/clip_bin routes with PromptServer.")
