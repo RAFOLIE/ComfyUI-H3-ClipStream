@@ -8,9 +8,14 @@ the combined work is distributed under the stricter of their licenses, **GPLv3**
 * Upstream: [NikoDemon80/ComfyUI-H3-Motion-Context](https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context)
 * Author: NikoDemon80
 * License: **GPLv3** (see `LICENSE`)
-* Bundled here as the `motion_context/` sub-package, verbatim:
+* Bundled here as the `motion_context/` sub-package (subsequently adapted to ComfyUI V3 by RAFOLIE on 2026-09-28):
   `nodes.py`, `layout_contract.py`, `csrf_guard.py`, `probe_node.py`,
   and `web/h3_motion_context.js`.
+
+The RAFOLIE changes replace node registration, schemas and execution return
+types, isolate package imports, and adapt the frontend panels for Nodes 2.0.
+`layout_contract.py` and `csrf_guard.py` remain unchanged. See
+[AFOLIE_DEVELOPMENT.md](AFOLIE_DEVELOPMENT.md) for modification records.
 
 ## 2. Clip Bin visual media pool
 * Upstream: [knoic/ComfyUI-MiniMaxH3-PrefixStream](https://github.com/knoic/ComfyUI-MiniMaxH3-PrefixStream)

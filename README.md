@@ -1,5 +1,11 @@
 # ComfyUI H3 ClipStream
 
+> **后续开发说明（RAFOLIE）**：本开发副本来源于 [AraneaQwQ/ComfyUI-H3-ClipStream](https://github.com/AraneaQwQ/ComfyUI-H3-ClipStream)。保留 GPLv3 许可证及 [原有组件来源](ATTRIBUTION.md)；开发基线和修改记录见 [AFOLIE_DEVELOPMENT.md](AFOLIE_DEVELOPMENT.md)。
+
+
+**RAFOLIE 开发版安装地址：** https://github.com/RAFOLIE/ComfyUI-H3-ClipStream
+
+**当前开发版：ComfyUI V3 API + Nodes 2.0。** 迁移范围、运行要求与验证结果见 [V3_MIGRATION.md](V3_MIGRATION.md)。
 **[English](#english)** | **[简体中文](#简体中文)**
 
 ---
@@ -69,7 +75,7 @@ Dual Clip Picker ──► latent_一采 ─► Motion Context (一采 path) . c
 
 ```bash
 cd ComfyUI/custom_nodes
-git clone https://github.com/AraneaQwQ/ComfyUI-H3-ClipStream.git
+git clone https://github.com/RAFOLIE/ComfyUI-H3-ClipStream.git
 pip install -r ComfyUI-H3-ClipStream/requirements.txt   # optional; ComfyUI usually ships torch/safetensors
 ```
 
@@ -148,7 +154,7 @@ Clips live in `ComfyUI/output/h3-clipstream/<project_name>/`. If you have an old
 
 Distributed under **GPLv3** (the stricter of the two upstream licenses).
 
-- **Motion-Context** (GPLv3): [NikoDemon80](https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context) — included verbatim in `motion_context/`.
+- **Motion-Context** (GPLv3): [NikoDemon80](https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context) — included in `motion_context/`, with RAFOLIE V3 adaptations.
 - **Clip Bin** (MIT): [knoic](https://github.com/knoic/ComfyUI-MiniMaxH3-PrefixStream) — included in `clipbin/`, decoupled from its continuation engine.
 
 See [ATTRIBUTION.md](ATTRIBUTION.md) for full details.
@@ -256,7 +262,7 @@ Dual Clip Picker ──► latent_一采 ─► Motion Context（一采路）. c
 
 ```bash
 cd ComfyUI/custom_nodes
-git clone https://github.com/AraneaQwQ/ComfyUI-H3-ClipStream.git
+git clone https://github.com/RAFOLIE/ComfyUI-H3-ClipStream.git
 pip install -r ComfyUI-H3-ClipStream/requirements.txt   # 可选；ComfyUI 通常已自带 torch/safetensors
 ```
 
@@ -335,7 +341,7 @@ pip install -r ComfyUI-H3-ClipStream/requirements.txt   # 可选；ComfyUI 通�
 
 按**更严格的一方**分发：**GPLv3**。
 
-- **Motion-Context**（GPLv3）：[NikoDemon80](https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context)——以 `motion_context/` 子包**原样**收录。
+- **Motion-Context**（GPLv3）：[NikoDemon80](https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context)——以 `motion_context/` 子包收录，已由 RAFOLIE 适配 V3。
 - **Clip Bin**（MIT）：[knoic](https://github.com/knoic/ComfyUI-MiniMaxH3-PrefixStream)——以 `clipbin/` 子包收录，已从接续引擎**解耦**。
 
 详见 [ATTRIBUTION.md](ATTRIBUTION.md)。

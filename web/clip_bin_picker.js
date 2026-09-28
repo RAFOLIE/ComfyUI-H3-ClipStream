@@ -1,3 +1,5 @@
+// Modified by RAFOLIE 2026-09-28: Nodes 2.0 DOM layout and lifecycle.
+import { addPanel } from "./dom_panel.js";
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 
@@ -43,6 +45,11 @@ app.registerExtension({
                 this.setSize([Math.max(this.size[0], 320), Math.max(this.size[1], 200)]);
             }
             setupClipBinPickerWidget(this);
+            if (nodeData.name === "MiniMaxClipBinDualPicker") {
+                // Leave room for seven outputs, controls and the card gallery.
+                // Only creation sets this default; saved workflow sizes win later.
+                this.setSize([Math.max(this.size[0], 680), Math.max(this.size[1], 640)]);
+            }
             return r;
         };
 
@@ -50,6 +57,7 @@ app.registerExtension({
         nodeType.prototype.onConfigure = function () {
             const r = onConfigure ? onConfigure.apply(this, arguments) : undefined;
             this.imgs = null;
+            this._h3ClipRefresh?.();
             return r;
         };
 
@@ -58,6 +66,7 @@ app.registerExtension({
             const r = onExecuted ? onExecuted.apply(this, arguments) : undefined;
             // Prevent ComfyUI from displaying default preview image in this picker node
             this.imgs = null;
+            this._h3ClipRefresh?.();
             return r;
         };
 
@@ -156,10 +165,7 @@ function setupClipBinPickerWidget(node) {
     container.appendChild(footer);
 
     // Add DOM widget to node
-    const widget = node.addDOMWidget("clip_bin_gallery", "gallery", container, {
-        serialize: false,
-        hideOnZoom: false,
-    });
+    const { signal } = addPanel(node, "clip_bin_gallery", container);
 
     node.imgs = null;
 
@@ -168,22 +174,8 @@ function setupClipBinPickerWidget(node) {
 
     // Fit node height: shrink so bottom edge flush with container bottom
     function fitToContent() {
-        const containerH = container.offsetHeight || 0;
-        if (containerH === 0) return; // no cards rendered yet
-
-        // Standard widgets (exclude our DOM container widget)
-        const stdWidgetsH = (node.widgets || []).filter(w => w.type !== "custom").length * 28;
-        const inputsH = (node.inputs || []).length * 20;
-        const outputsH = (node.outputs || []).length * 20;
-        const TITLE = 28;
-        const BOTTOM_PAD = 6;
-
-        const target = TITLE + inputsH + outputsH + stdWidgetsH + containerH + BOTTOM_PAD;
-
-        // Only shrink (never grow) — user may intentionally make node bigger
-        if (node.size[1] > target + 4) {
-            node.setSize([node.size[0], target]);
-        }
+        // Nodes 2.0 and Canvas allocate the DOM widget height; keep user sizing.
+        node.setDirtyCanvas?.(true, true);
     }
 
     // Function to open full-featured audio/video modal preview
@@ -317,9 +309,13 @@ function setupClipBinPickerWidget(node) {
     }
 
     // Function to load and render clips
+    let requestId = 0;
     async function loadClips() {
+        if (signal.aborted) return;
+        const currentRequest = ++requestId;
         const currentProject = projectWidget?.value || "Default_Project";
         const currentSelection = (selectionWidget?.value || "latest").trim();
+        updateSelectionDisplay(currentSelection);
         titleWrap.innerHTML = `🎞️ MiniMax Project Clip Bin: <span class="minimax-clip-bin-project-tag">${currentProject}</span>`;
 
         try {
@@ -329,6 +325,7 @@ function setupClipBinPickerWidget(node) {
                 return;
             }
             const data = await res.json();
+            if (signal.aborted || currentRequest !== requestId) return;
             const clips = data.clips || [];
 
             deck.innerHTML = "";
@@ -567,19 +564,12 @@ function setupClipBinPickerWidget(node) {
         };
     }
 
-    // Initial load
-    setTimeout(loadClips, 200);
-
-    // Auto-refresh when generation execution finishes
-    api.addEventListener("executed", (e) => {
-        if (e.detail?.node === String(node.id) || e.detail?.output?.ui?.images) {
-            setTimeout(loadClips, 500);
-        }
-    });
-
-    api.addEventListener("status", (e) => {
-        if (e.detail?.exec_info?.queue_remaining === 0) {
-            setTimeout(loadClips, 600);
-        }
-    });
+    node._h3ClipRefresh = loadClips;
+    const onExecuted = () => loadClips();
+    api.addEventListener("execution_success", onExecuted);
+    signal.addEventListener("abort", () => {
+        api.removeEventListener("execution_success", onExecuted);
+        delete node._h3ClipRefresh;
+    }, { once: true });
+    loadClips();
 }

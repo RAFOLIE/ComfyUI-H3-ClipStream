@@ -600,3 +600,11 @@
     border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
+
+/* RAFOLIE 2026-09-28: responsive DOM layout, scoped to this plugin. */
+.minimax-clip-bin-container { margin: 0; min-width: 0; min-height: 0; }
+.minimax-clip-bin-header { flex-wrap: wrap; gap: 6px; flex: 0 0 auto; }
+.minimax-clip-bin-deck { flex: 1 1 0; min-height: 0; min-width: 0;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--card-min, 150px)), 1fr)); }
+.minimax-clip-bin-footer { flex: 0 0 auto; flex-wrap: wrap; overflow-wrap: anywhere; }
+.minimax-clip-bin-container img { max-width: 100%; }
